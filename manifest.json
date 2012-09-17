@@ -1,0 +1,21 @@
+{
+  "name": "syncBoard",
+  "version": "0.1",
+  "manifest_version": 2, 
+  "description": "Synchronized local postit bpard.",
+  "icons": { "16": "icon16.png", "48":"icon48.png","128": "icon128.png" },
+
+  "app":{
+    "background": {
+      "scripts": [
+        "background.js"
+      ] 
+    }
+  },
+
+  "minimum_chrome_version": "21.0.1180.89",
+  "offline_enabled": true,
+  "permissions": ["storage"],
+  "incognito": "split"
+}
+
