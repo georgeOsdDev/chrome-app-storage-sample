@@ -4,6 +4,7 @@
 
 // __Namespace of App__
 window.App ={
+  sessionKey:null,
   objNo:0,
   objList:{},
   draggableOption:{
@@ -18,42 +19,74 @@ window.App ={
   },
 }
 
+// __`onChange` eventListener__
+// when data was updated by other device,
+// Refresh Application
+chrome.storage.onChanged.addListener(function(changes, namespace) {
+  console.log("storage updated");
+  if (changes["lastUpdUser"] 
+      && changes["lastUpdUser"].newValue.sessionKey != App.sessionKey){
+    // console.log("by another device");
+    refreshApp(changes);
+  } else {
+    //console.log("by myself");
+  }
+});
+
+
 // Dom ready
 $(function(){
 
-  // Bind create Object function to buttons
+  // Bind `createObj` function to buttons
   // create object based on `data` attribute.
   $("#menu > a").each(function(index,domEle){
-    var dataStr = $(this).attr('data');
-    if (dataStr){
-      var dataJson = $.parseJSON($(this).attr('data'));
-      $(this).bind('click',function(){
-        createObj(dataJson);
-      })
-    }
+    var that = this;
+    $(that).bind('click',function(){
+      var dataJson = $.parseJSON($(that).attr('data'));
+      createObj(dataJson,false);
+    });
   });
 
-  // bind clear All function
+  // bind `clearAll` function
   $("#clearBtn").bind('click',function(){
     clearAll();
   });
 
-  // initialize app.
+  // initialize Application.
   initialize();
 
 })
 
-// Create Object
+// __Create Object__
+// @param obj
+// @param isInitialize
+//
+// Create DOM object.
+// If it was triggerd by initailization phase, We don't save the new object to storage.
+// Only it was triggerd by user, We save the new data to storage.
 function createObj(obj,isInitialize){
-  var conts ="",
-      id = "",
-      styleClass = obj.type || "",
-      color = obj.color || "";
+  if(!obj) return;
+  if ($('#'+obj.id)){
+    console.log("!!!" +obj.id);
+    $('#'+obj.id).remove();
+  }
+  var conts =""
+      ,id = ""
+      ,styleClass = obj.styleClass || ""
+      ,color = obj.color || "";
 
-  //switch inner element
+  // if it is not Initialization phase,
+  // get unique id.
+  if(!isInitialize){
+    obj.id = 'obj'+App.objNo;
+    obj.body = "Edit and Drag Me.";
+    App.objNo +=1;
+  }
+  id = obj.id;
+  //switch inner element by its styleClass
   switch(styleClass){
     case "postit":
-      var text = obj.body || "Edit and Drag Me."
+      var text = obj.body;
       conts = "<textarea class='post-"+color+"' col='5' row='10'>"+text+"</textarea>";
       break;
     case "stamp":
@@ -64,13 +97,7 @@ function createObj(obj,isInitialize){
       return;
   }
 
-  if(!isInitialize){
-    obj.id = 'obj'+App.objNo;
-    obj.objNo = App.objNo;
-  }
-  id = obj.id;
-
-  // Crreate Element
+  // Create DOM Element
   var elm = "<div id='"+id+"' class='"+styleClass+" btn-"+ color + " obj-init'>"
             +"<button type='button' class='close close-margin' data-dismiss='alert'><i class='icon-remove'></i></button>"
             +conts
@@ -83,80 +110,136 @@ function createObj(obj,isInitialize){
     editObj(obj);
   });
 
-  // bind jquery.UI event
+  // bind jquery.UI's `draggable` and TwitterBootstrap's `closed` event
   $('#'+id)
   .draggable(App.draggableOption)
   .bind('closed',function(){
+    console.log("closed");
     removeObj(obj);
   });
 
-
+  // If it was initailized phase, apply position of object from storage
   if (isInitialize) {
-    // if it was created at initialized phase, set position.
     $('#'+id).css('top',obj.top).css('left',obj.left);
-  }else {
-    // save
     App.objList[id] = obj;
-    App.objNo++;
-    chrome.storage.sync.set({"objNo":App.objNo});
-    chrome.storage.sync.set({"objList":App.objList});    
+  }else {
+    // Else save on storage.
+    obj.top = $('#'+id).css('top');
+    obj.left = $('#'+id).css('left');    
+    obj.body = $('#'+id+'> textarea').val();
+    App.objList[id] = obj;
+    save();
   }
+  // And last, show element.
   $('#'+id).fadeIn();
 }
 
+// __startMoving__
+// @param event
+// @param ui
 // do nothing when it start moving
 function startMoving(event,ui){
 }
 
-// save object position when it stop moving
+// __stopMoving__
+// @param event
+// @param ui
+// save object position when it stop moving.
 function stopMoving(event,ui){
   var id = ui.helper.context.id;
   App.objList[id].top = ui.position.top;
   App.objList[id].left = ui.position.left;
-  chrome.storage.sync.set({"objList":App.objList},function(){
-    // console.log("objList updated");
-  });
+  save();
 }
 
-// remove object 
+
+// __removeObj__
+// @param data
+// When object was `removed`
 function removeObj(data){
+  console.log("remove");
   var id = data.id;
+  // remove from DOM.
   $("#" + id).remove();
+  // remove from Memory.
   App.objList[id] = null;
-  chrome.storage.sync.set({"objList":App.objList},function(){
-    // console.log("objList updated");
-  });
+  // save change
+  save();
 }
 
-// edit object's inner text
+// __editObj__
+// @param data
+// When object was `edited`
 function editObj(data){
   var id = data.id;
   App.objList[id] = data;
-  chrome.storage.sync.set({"objList":App.objList},function(){
-    // console.log("objList updated");
-  });
+  // save change
+  save();
 }
 
-// remove all objects
+// __clearAll__
+// Remove all objects
 function clearAll(){
+  // from DOM
   $("#mainboardDiv").empty();
+  // from Memory
   App.objList = {};
   App.objNo = 0;
-  chrome.storage.sync.clear(function(){
-    // console.log("clear storage");
+  // save change
+  save();
+}
+
+// __Initialize__
+function initialize(){
+  console.log("initialize");
+  // set sessionKey per device
+  if (!App.sessionKey) App.sessionKey = navigator.platform+'#'+(+new Date());
+  // get objects from Storage
+  chrome.storage.sync.get(function(items){
+    App.objNo = items.objNo || 0;
+    App.objList = items.objList || {};
+    for (var key in App.objList) {
+      createObj(App.objList[key],true);
+    }
   });
 }
 
-// initialize objects
-function initialize(){
-  console.log("initialize");
-  chrome.storage.sync.get("objNo", function(val){
-    App.objNo = val.objNo || 0;
-    chrome.storage.sync.get("objList", function(val){
-      App.objList = val.objList || {};
-      for (var key in App.objList) {
-        createObj(App.objList[key],true);
-      }
-    });
+// __refreshApp__
+function refreshApp(changes){
+  if (!changes["objList"]) return;
+  var newObjList = changes["objList"].newValue;
+  var oldObjList = changes["objList"].oldValue;
+  for (var key1 in newObjList){
+    if (!oldObjList[key1]){
+      createObj(newObjList[key1],true);      
+    }else {
+      for (var key2 in newObjList[key1]){
+        if(newObjList[key1][key2] != oldObjList[key1][key2]){
+          createObj(newObjList[key1],true);
+          break;
+        }
+      }      
+    }
+  }
+  for (key3 in oldObjList){
+    if (!newObjList[key3]){
+      $("#" + key3).remove();
+      // remove from Memory.
+      App.objList[key3] = null;
+    }
+  }  
+}
+
+// __save__
+function save(){
+  chrome.storage.sync.set({
+    "objList":App.objList,
+    "objNo":App.objNo,
+    "lastUpdUser":{
+      "sessionKey":App.sessionKey,
+      "time":+new Date()
+    }
+  },function(){
+    // console.log("saved");
   });
 }
