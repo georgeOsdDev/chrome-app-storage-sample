@@ -23,7 +23,7 @@ window.App ={
 // when data was updated by other device,
 // Refresh Application
 chrome.storage.onChanged.addListener(function(changes, namespace) {
-  console.log("storage updated");
+  // console.log("storage updated");
   if (changes["lastUpdUser"] 
       && changes["lastUpdUser"].newValue.sessionKey != App.sessionKey){
     // console.log("by another device");
@@ -65,9 +65,9 @@ $(function(){
 // If it was triggerd by initailization phase, We don't save the new object to storage.
 // Only it was triggerd by user, We save the new data to storage.
 function createObj(obj,isInitialize){
+  console.log(obj);
   if(!obj) return;
   if ($('#'+obj.id)){
-    console.log("!!!" +obj.id);
     $('#'+obj.id).remove();
   }
   var conts =""
